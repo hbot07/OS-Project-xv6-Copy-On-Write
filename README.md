@@ -1,1 +1,2 @@
-# OS-Project-xv6-Copy-On-Write
+# Project: Copy-On-Write in xv6
+In this project, you need to augment the given xv6 code (refer to the attachment) with the Copy-on-Write mechanism along with the previously implemented swap functionality.
