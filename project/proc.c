@@ -88,6 +88,7 @@ allocproc(void)
 found:
   p->state = EMBRYO;
   p->pid = nextpid++;
+  p->rss = PGSIZE;
 
   release(&ptable.lock);
 
@@ -169,6 +170,7 @@ growproc(int n)
     if((sz = deallocuvm(curproc->pgdir, sz, sz + n)) == 0)
       return -1;
   }
+  curproc->rss += n;
   curproc->sz = sz;
   switchuvm(curproc);
   return 0;
@@ -199,6 +201,7 @@ fork(void)
   np->sz = curproc->sz;
   np->parent = curproc;
   *np->tf = *curproc->tf;
+  np->rss = curproc->rss;
 
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
@@ -286,6 +289,7 @@ wait(void)
       havekids = 1;
       if(p->state == ZOMBIE){
         // Found one.
+        clear_swap(p->pgdir, p);
         pid = p->pid;
         kfree(p->kstack);
         p->kstack = 0;
@@ -422,6 +426,7 @@ forkret(void)
     first = 0;
     iinit(ROOTDEV);
     initlog(ROOTDEV);
+    swap_init();
   }
 
   // Return to "caller", actually trapret (see allocproc).
@@ -546,4 +551,117 @@ procdump(void)
     }
     cprintf("\n");
   }
+}
+
+
+
+struct proc* find_victim_process()
+{
+    struct proc *p, *victim = 0;
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+    {
+        if(victim == 0)
+        {
+          victim = p;
+          continue;
+        }
+
+        if((p->rss > victim->rss) || (p->rss == victim->rss && p->pid < victim->pid))
+            victim = p;
+    }
+
+    if (victim == 0)
+        panic("find_victim_process: No runnable process found");
+
+    return victim;
+}
+
+
+// returns the complete page table entry of the victim page
+// returns 0 if no victim page is found 
+pte_t* find_victim_pte(struct proc *victim_p)
+{
+    // if (victim_p->rss == 0)
+    // {
+    //   panic("find_victim_pte: victim_p->rss == 0");
+    // }
+
+    pte_t *pte;
+    // pte_t victim_pte;
+    int accessed_pages = 0;
+    int pages_to_convert = 0;
+
+    for(uint i = 0; i < victim_p->sz; i += PGSIZE)
+    {
+        if((pte = walkpgdir(victim_p->pgdir, (void *) i, 0)) == 0)
+            continue;
+        
+        if((*pte & PTE_P) == 0)
+            continue;
+
+        if((*pte & PTE_A) == 0) {
+            // cprintf("Found victim pte: va = %x, *pte = %x\n", i, *pte);
+            return pte;
+        }
+        else 
+            accessed_pages++;
+    }
+
+    // No victim page found in the process, 
+    // so we convert 10% of accessed pages to non-accessed by unsetting the PTE_A flag
+    pages_to_convert = accessed_pages / 10;
+
+    if(pages_to_convert == 0)
+        pages_to_convert = 1;
+
+    // cprintf("No victim page found, converting %d pages to non-accessed\n", pages_to_convert);    
+    for(uint i = 0; i < victim_p->sz && pages_to_convert > 0; i += PGSIZE)
+    {
+        if((pte = walkpgdir(victim_p->pgdir, (void *) i, 0)) == 0)
+            continue;
+
+        if((*pte & PTE_P) != 0 && (*pte & PTE_A) != 0)
+        {
+            *pte &= ~PTE_A; // Unset the PTE_A flag
+            pages_to_convert--;
+        }
+    }
+
+    // Try to find a victim page again
+    for(uint i = 0; i < victim_p->sz; i += PGSIZE)
+    {
+        if((pte = walkpgdir(victim_p->pgdir, (void *) i, 0)) == 0)
+            continue;
+
+        if((pte = walkpgdir(victim_p->pgdir, (void *) i, 0)) == 0)
+            continue;
+        
+        if((*pte & PTE_P) == 0)
+            continue;
+
+        if((*pte & PTE_A) == 0) {
+            return pte;
+        }
+    }
+
+    return 0; // No victim page found
+}
+
+
+void clear_swap(pde_t *pgdir, struct proc *p)
+{
+    pte_t *pte;
+    for(uint i = 0; i < p->sz; i += PGSIZE)
+    {
+        if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
+            continue;
+        
+        if((*pte & PTE_P) == 0)
+        {
+          if (*pte & 0x008)
+          {
+            freepage(pte);
+          }
+        }
+    }
 }

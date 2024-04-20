@@ -9,6 +9,7 @@ struct spinlock;
 struct sleeplock;
 struct stat;
 struct superblock;
+struct swap_slot;
 
 // bio.c
 void            binit(void);
@@ -122,6 +123,11 @@ int             wait(void);
 void            wakeup(void*);
 void            yield(void);
 void            print_rss(void);
+struct proc*    find_victim_process();
+pte_t*          find_victim_pte(struct proc*);
+void            clear_swap(pde_t*, struct proc*);
+void            freepage(pte_t*);
+
 
 // swtch.S
 void            swtch(struct context**, struct context*);
@@ -187,6 +193,14 @@ void            switchuvm(struct proc*);
 void            switchkvm(void);
 int             copyout(pde_t*, uint, void*, uint);
 void            clearpteu(pde_t *pgdir, char *uva);
+pte_t*          walkpgdir(pde_t *pgdir, const void *va, int alloc);
+
+// pageswap.c
+void            swap_init(void);
+void            page_fault_handler(void);
+char*           swap_page_out();
+int             swap_page_in(pte_t*, struct proc*);
+
 
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))

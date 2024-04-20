@@ -101,6 +101,21 @@ kalloc(void)
     
   if(kmem.use_lock)
     release(&kmem.lock);
+  
+  if ((char*)r == 0)
+  {
+    // swap_page_out(victim_pte, victim_proc);
+    // return kalloc();
+    // cprintf("inside kalloc when out of memory\n");
+    char* swapped_out_page_addr = swap_page_out();
+    if (swapped_out_page_addr == 0)
+    {
+      panic("kalloc: out of memory");
+    }
+    return swapped_out_page_addr;
+  }
+
+
   return (char*)r;
 }
 uint 
