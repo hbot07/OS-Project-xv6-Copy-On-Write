@@ -289,7 +289,6 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
         rmap_table[PGNUM(pa)].proc_count = 0;
         kfree(v);
       }
-
     }
   }
   return newsz;

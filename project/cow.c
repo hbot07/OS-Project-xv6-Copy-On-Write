@@ -38,7 +38,7 @@ void page_fault_handler(void) {
             char *mem = kalloc();
             if (mem == 0) {
                 // Out of memory, kill the process
-                cprintf("out of memory\n");
+                cprintf("page_fault_handler: out of memory\n");
                 curproc->killed = 1;
                 return;
             }
@@ -54,7 +54,7 @@ void page_fault_handler(void) {
             rmap_table[PGNUM(PTE_ADDR(*pte))].proc_count--;
 
             // Increment the proc_count for the new page
-            rmap_table[PGNUM(V2P(mem))].proc_count++;
+            rmap_table[PGNUM(V2P(mem))].proc_count = 1;
         } else {
             // The faulting process is the only one referencing the page
             // Mark the page as writable
@@ -66,6 +66,7 @@ void page_fault_handler(void) {
     }
 
     // The faulting address is not in the process's address space, kill the process
+    // lcr3(V2P(curproc->pgdir));
     cprintf("segmentation fault\n");
     // curproc->killed = 1;
 }
