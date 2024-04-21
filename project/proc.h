@@ -57,3 +57,11 @@ struct proc {
 //   original data and bss
 //   fixed-size stack
 //   expandable heap
+
+struct rmap {
+    int page_id;
+    int proc_count;
+};
+
+// is MAX_PAGES the same as PHYSTOP/PGSIZE?
+extern struct rmap rmap_table[PHYSTOP/PGSIZE];
