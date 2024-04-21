@@ -283,6 +283,7 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 
       // update rmap_table
       if (rmap_table[PGNUM(pa)].proc_count > 1) {
+
         rmap_table[PGNUM(pa)].proc_count--;
       } else {
         rmap_table[PGNUM(pa)].proc_count = 0;
@@ -388,10 +389,14 @@ copyuvm(pde_t *pgdir, uint sz)
       goto bad;
     }
 
+    // update rmap_table
+    rmap_table[PGNUM(pa)].proc_count++;
   }
+  lcr3(V2P(pgdir));
   return d;
 
 bad:
+  lcr3(V2P(pgdir));
   freevm(d);
   return 0;
 }

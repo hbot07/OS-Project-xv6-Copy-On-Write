@@ -10,10 +10,6 @@
 int
 exec(char *path, char **argv)
 {
-  // print inside exec
-  cprintf("inside exec\n");
-  cprintf("exec: path = %s\n", path);
-
   char *s, *last;
   int i, off;
   uint argc, sz, sp, ustack[3+MAXARG+1];

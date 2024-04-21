@@ -12,6 +12,7 @@
 
 
 void page_fault_handler(void) {
+    // cprintf("page fault\n");
     // Get the faulting address
     uint faulting_address; // vartual address
 
@@ -19,6 +20,7 @@ void page_fault_handler(void) {
 
     // Check if the faulting address is in the process's address space
     struct proc *curproc = myproc();
+
     if (faulting_address < curproc->sz) {
         // The address is in the process's address space, so this is a write to a COW page
         // Find the page table entry for the faulting address
@@ -40,13 +42,13 @@ void page_fault_handler(void) {
                 curproc->killed = 1;
                 return;
             }
-            memset(mem, 0, PGSIZE);
+            // memset(mem, 0, PGSIZE);
 
             // Copy the contents of the original page to the new page
             memmove(mem, (char*)P2V(PTE_ADDR(*pte)), PGSIZE);
 
             // Update the page table entry to point to the new page
-            *pte = V2P(mem) | PTE_P | PTE_W | PTE_U;
+            *pte = V2P(mem) | PTE_W | PTE_FLAGS(*pte) | PTE_P;
             
             // Decrement the proc_count for the original page
             rmap_table[PGNUM(PTE_ADDR(*pte))].proc_count--;
@@ -59,10 +61,11 @@ void page_fault_handler(void) {
             *pte |= PTE_W;
         }
         // Return to let the process continue execution
+        lcr3(V2P(pgdir));
         return;
     }
 
     // The faulting address is not in the process's address space, kill the process
     cprintf("segmentation fault\n");
-    curproc->killed = 1;
+    // curproc->killed = 1;
 }
