@@ -21,7 +21,6 @@ extern void trapret(void);
 static void wakeup1(void *chan);
 
 // is MAX_PAGES the same as PHYSTOP/PGSIZE?
-extern struct rmap rmap_table[PHYSTOP/PGSIZE];
 
 void
 pinit(void)
@@ -200,12 +199,6 @@ fork(void)
     return -1;
   }
 
-  for(i = 0; i < curproc->sz / PGSIZE; i++) {
-    if((np->pgdir[i] & PTE_P) != 0) {
-      rmap_table[PGNUM(np->pgdir[i])].proc_count++;
-    }
-  }
-
   np->sz = curproc->sz;
   np->parent = curproc;
   *np->tf = *curproc->tf;
@@ -268,12 +261,6 @@ exit(void)
       p->parent = initproc;
       if(p->state == ZOMBIE)
         wakeup1(initproc);
-    }
-  }
-
-  for(int i = 0; i < curproc->sz / PGSIZE; i++) {
-    if((curproc->pgdir[i] & PTE_P) != 0) {
-      rmap_table[PGNUM(curproc->pgdir[i])].proc_count--;
     }
   }
 

@@ -9,7 +9,6 @@
 #include "sleeplock.h"
 #include "fs.h"
 #include "buf.h"
-#include "proc.h"
 
 
 void page_fault_handler(void) {
@@ -43,7 +42,6 @@ void page_fault_handler(void) {
             }
             memset(mem, 0, PGSIZE);
 
-
             // Copy the contents of the original page to the new page
             memmove(mem, (char*)P2V(PTE_ADDR(*pte)), PGSIZE);
 
@@ -60,8 +58,6 @@ void page_fault_handler(void) {
             // Mark the page as writable
             *pte |= PTE_W;
         }
-
-
         // Return to let the process continue execution
         return;
     }

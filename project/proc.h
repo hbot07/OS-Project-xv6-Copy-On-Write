@@ -64,4 +64,7 @@ struct rmap {
 };
 
 // is MAX_PAGES the same as PHYSTOP/PGSIZE?
-extern struct rmap rmap_table[PHYSTOP/PGSIZE];
+#define PHYSTOP2 0x400000           // Top physical memory
+
+// extern struct rmap rmap;
+extern struct rmap rmap_table[PHYSTOP2/PGSIZE];

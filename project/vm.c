@@ -10,6 +10,9 @@
 extern char data[];  // defined by kernel.ld
 pde_t *kpgdir;  // for use in scheduler()
 
+// struct rmap rmap;
+struct rmap rmap_table[PHYSTOP2/PGSIZE];
+
 // Set up CPU's kernel segment descriptors.
 // Run once on entry on each CPU.
 void
@@ -32,7 +35,7 @@ seginit(void)
 // Return the address of the PTE in page table pgdir
 // that corresponds to virtual address va.  If alloc!=0,
 // create any required page table pages.
-static pte_t *
+pte_t *
 walkpgdir(pde_t *pgdir, const void *va, int alloc)
 {
   pde_t *pde;
@@ -190,6 +193,8 @@ inituvm(pde_t *pgdir, char *init, uint sz)
   memset(mem, 0, PGSIZE);
   mappages(pgdir, 0, PGSIZE, V2P(mem), PTE_W|PTE_U);
   memmove(mem, init, sz);
+  // update rmap_table
+  rmap_table[PGNUM(V2P(mem))].proc_count = 1;
 }
 
 // Load a program segment into pgdir.  addr must be page-aligned
@@ -244,6 +249,8 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       kfree(mem);
       return 0;
     }
+    // update rmap_table
+    rmap_table[PGNUM(V2P(mem))].proc_count++;
   }
   return newsz;
 }
@@ -271,8 +278,17 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       if(pa == 0)
         panic("kfree");
       char *v = P2V(pa);
-      kfree(v);
+      // kfree(v);
       *pte = 0;
+
+      // update rmap_table
+      if (rmap_table[PGNUM(pa)].proc_count > 1) {
+        rmap_table[PGNUM(pa)].proc_count--;
+      } else {
+        rmap_table[PGNUM(pa)].proc_count = 0;
+        kfree(v);
+      }
+
     }
   }
   return newsz;
@@ -345,13 +361,14 @@ clearpteu(pde_t *pgdir, char *uva)
 // }
 
 
-// Modified copyuvm function for COW
+// Modified copyuvm function 
 pde_t*
 copyuvm(pde_t *pgdir, uint sz)
 {
   pde_t *d;
   pte_t *pte;
-  uint i;
+  uint pa, i, flags;
+  // char *mem;
 
   if((d = setupkvm()) == 0)
     return 0;
@@ -360,19 +377,23 @@ copyuvm(pde_t *pgdir, uint sz)
       panic("copyuvm: pte should exist");
     if(!(*pte & PTE_P))
       panic("copyuvm: page not present");
-    *pte &= ~PTE_W; // Remove write permission
-    *pte |= PTE_COW; // Add copy-on-write flag
+    *pte &= ~PTE_W;
+    *pte |= PTE_COW;
+    pa = PTE_ADDR(*pte);
+    flags = PTE_FLAGS(*pte);
 
-    // TO DO: do we have to do d = pgdir or something like that?
+    // copy each page table entry into d
+    if(mappages(d, (void*)i, PGSIZE, pa, flags) < 0) {
+      // kfree(mem);
+      goto bad;
+    }
 
-    // is the below code useless?
-    // if(mappages(newpgdir, (void*)i, PGSIZE, pa, flags) < 0) {
-    //     freevm(newpgdir);
-    //     return 0;
-    // }
-    
   }
   return d;
+
+bad:
+  freevm(d);
+  return 0;
 }
 
 
