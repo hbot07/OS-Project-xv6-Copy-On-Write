@@ -273,13 +273,15 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       if(pa == 0)
         panic("kfree");
       char *v = P2V(pa);
+      remove_pte(pa, pte);
       kfree(v);
       *pte = 0;
     }
     else
     {
       int block_no = *pte >> 12;
-      funci(block_no);
+      decrement_swap_slot_ref_count(block_no);
+      remove_pte_from_swap_slot(pte, block_no);
     }
   }
   return newsz;
@@ -368,25 +370,41 @@ copyuvm(pde_t *pgdir, uint sz)
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
       panic("copyuvm: pte should exist");
-    if(!(*pte & PTE_P))
-      panic("copyuvm: page not present");
-    pa = PTE_ADDR(*pte);
-    flags = PTE_FLAGS(*pte);
-    flags &= ~PTE_W;
-    *pte &= ~PTE_W;
-    // if((mem = kalloc()) == 0)
-    //   goto bad;
-    // memmove(mem, (char*)P2V(pa), PGSIZE);
-    inc_ref_count(pa);
 
-    if(mappages(d, (void*)i, PGSIZE, pa, flags) < 0) {
-      kfree(mem);
-    pde_t* wtf=walkpgdir(d, (void*)i, 0);
-    insert_pte(pa, wtf);
-    insert_pte(pa, pte);
-      goto bad;
+    if(!(*pte & PTE_P))
+    {
+      pa = PTE_ADDR(*pte);
+      *pte &= ~PTE_W;
+      flags = PTE_FLAGS(*pte);
+      int block_no = *pte >> 12;
+      increment_swap_slot_ref_count(block_no);
+      insert_pte_in_swap_slot(pte, block_no);
+      if (mappages(d, (void*)i, PGSIZE, pa, flags) < 0)
+        goto bad;
+      
+      pte_t* temp=walkpgdir(d, (void*)i, 0);
+      *temp &= ~PTE_P;
+      insert_pte_in_swap_slot(temp, block_no);
+
     }
+    else
+    {
+      pa = PTE_ADDR(*pte);
+      flags = PTE_FLAGS(*pte);
+      flags &= ~PTE_W;
+      *pte &= ~PTE_W;
+      insert_pte(pa, pte);
+      inc_ref_count(pa);
+      if (mappages(d, (void*)i, PGSIZE, pa, flags) < 0){
+        kfree(mem);
+        goto bad;
+      }
+      pte_t* temp=walkpgdir(d, (void*)i, 0);
+      insert_pte(pa, temp);
+    }
+    
   }
+  
   lcr3(V2P(pgdir));  // flush TLB
   return d;
 

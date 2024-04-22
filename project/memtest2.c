@@ -43,7 +43,7 @@ mem(void)
 		printf(1,"Parent alloc-ed:\n");
 		getrss();
 		wait();
-		printf(1,"Parent done\n");
+		// printf(1,"Parent done\n");
 	}
 
 
@@ -68,7 +68,7 @@ mem(void)
 	}
 	if(pid==0)
 		printf(1, "Memtest2 Passed!\n");
-	printf(1,"no error yet1\n");
+	// printf(1,"no error yet1\n");
 	
 	exit();
 	
@@ -84,7 +84,7 @@ main(int argc, char *argv[])
 	mem();
 	// getrss();
 
-	printf(1,"no error yet\n");
+	// printf(1,"no error yet\n");
 	
 	exit();
 	return 0;

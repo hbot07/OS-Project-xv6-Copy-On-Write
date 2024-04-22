@@ -17,6 +17,7 @@ struct run {
   struct run *next;
 };
 
+// list of pte's for each process
 struct pte_list{
   pte_t* arr[NPROC];
 };
@@ -27,7 +28,8 @@ struct {
   uint num_free_pages;  //store number of free pages
   struct run *freelist;
   int rmap[PHYSTOP>>12]; //store number of references to each page
-  struct pte_list pte_list_2D[PHYSTOP>>12]; //store the page table entry of each page
+  struct pte_list pte_list_2D[PHYSTOP>>12]; 
+  // for each physical page store the list of pte's that point to it
 } kmem;
 
 // Initialization happens in two phases.
@@ -95,12 +97,6 @@ kfree(char *v)
     release(&kmem.lock);
 }
 
-pde_t* get_smthth_entry(uint pa, int i)
-{
-  return kmem.pte_list_2D[pa>>12].arr[i];
-
-}
-
 // Allocate one 4096-byte page of physical memory.
 // Returns a pointer that the kernel can use.
 // Returns 0 if the memory cannot be allocated.
@@ -111,7 +107,9 @@ kalloc(void)
 
   if(kmem.use_lock)
     acquire(&kmem.lock);
+    
   r = kmem.freelist;
+
   if(r)
   {
     kmem.freelist = r->next;
@@ -121,28 +119,26 @@ kalloc(void)
     // make all 64 (=NPROC) entries of the page table entry list NULL
     for(int i=0;i<NPROC;i++)
     {
-      kmem.pte_list_2D[V2P((char*)r)>>12].arr[i]=0;
+      kmem.pte_list_2D[V2P((char*)r)>>12].arr[i] = 0;
     }
+
+    if(kmem.use_lock)
+      release(&kmem.lock);
+
+    return (char*) r;
   }
-  if(kmem.use_lock)
-    release(&kmem.lock);
-  if(r) return (char*)r;
-  
+  else
   {
-   cprintf("swap out\n"); 
-    char* swapped_out_page_addr = swap_page_out();
-    cprintf("swap in\n");
+    if(kmem.use_lock)
+      release(&kmem.lock);
+    
+    // cprintf("swap out\n"); 
+    swap_page_out();
+    // cprintf("swap in\n");
     return kalloc();
-    if (swapped_out_page_addr == 0)
-    {
-      panic("kalloc: out of memory");
-    }
-    return swapped_out_page_addr;
-  }
-
-
-  
+  }  
 }
+
 uint 
 num_of_FreePages(void)
 {
@@ -186,6 +182,11 @@ int get_ref_count(uint pa)
 }
 
 
+pde_t* get_pte_at_pa_of_proc_i(uint pa, int i)
+{
+  return kmem.pte_list_2D[pa>>12].arr[i];
+}
+
 void insert_pte(uint pa, pte_t* pte)
 {
   // acquire(&kmem.lock);
@@ -209,7 +210,7 @@ void insert_pte(uint pa, pte_t* pte)
   // release(&kmem.lock);
 }
 
-void copy_out(uint pa,pde_t* pte,int i)
+void store_pte_in_list_at_index(uint pa,pde_t* pte,int i)
 {
   kmem.pte_list_2D[pa>>12].arr[i]=pte;
 }

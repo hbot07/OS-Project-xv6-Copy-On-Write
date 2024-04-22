@@ -44,26 +44,32 @@ void swap_init() {
     cprintf("swap_init done\n");
 }
 
-void funci(int x)
+void decrement_swap_slot_ref_count(int x)
 {
     swap_table[x].ref_count--;
     if(swap_table[x].ref_count<=0)
     {
         swap_table[x].is_free=1;
+        swap_table[x].ref_count = 0;
     }
+}
+
+void increment_swap_slot_ref_count(int x)
+{
+    swap_table[x].ref_count++;
 }
 
 // modified to free the page and also return the freed page
 char* swap_page_out() {
     // cprintf("\ninside swap_page_out\n");
     struct proc *victim_proc = find_victim_process();
-    cprintf("victim_proc pid: %x\n", victim_proc->pid);
+    // cprintf("victim_proc pid: %x\n", victim_proc->pid);
     pte_t* victim_pte = find_victim_pte(victim_proc);
-    cprintf("page found\n");
-    // if (victim_pte == 0)
-    // {
-    //     panic("victim_pte is null");     
-    // }
+    // cprintf("page found\n");
+    if (victim_pte == 0)
+    {
+        panic("victim_pte is null");     
+    }
 
     // cprintf("victim_proc pid: %x and rss: %d\n", victim_proc->pid, victim_proc->rss);
     // cprintf("*victim_pte: %x\n", *victim_pte);
@@ -110,22 +116,23 @@ char* swap_page_out() {
     // *victim_pte &= ~PTE_P;
     *victim_pte |= 0x008;
 
-    for(int smth=0;smth<64;smth++)
+    for(int proc_no = 0; proc_no < 64; proc_no ++)
     {
-        pde_t* entry = get_smthth_entry(V2P(mem_page), smth);
-        swap_table[i].pte_list[smth] = entry;
+        pte_t* entry = get_pte_at_pa_of_proc_i(V2P(mem_page), proc_no);
+        swap_table[i].pte_list[proc_no] = entry;
         if(entry!=0)
         {
             *entry=*victim_pte;
         }
     }
+
     set_ref_count(V2P(mem_page), 0);
     kfree(mem_page);
     // cprintf("in swap out --> swap slot: %x, swap_table[i].page_perm %x\n", i, swap_table[i].page_perm);
     
     // cprintf("after swapping out victim: *pte =%x\n", *victim_pte); 
     // cprintf("Exiting swap_page_out\n\n");
-    return mem_page;
+    return mem_page; // return value not used
 }
 
 int swap_page_in(pte_t *page_table_entry, struct proc *p)
@@ -157,15 +164,14 @@ int swap_page_in(pte_t *page_table_entry, struct proc *p)
 
     // cprintf("in swap in --> swap slot: %x, swap_table[i].page_perm %x\n", i, swap_table[i].page_perm);
     
-
     *page_table_entry = V2P(mem_page) | PTE_P | swap_table[i].page_perm;
     *page_table_entry &= ~0x008;
-    for(int r=0;r<64;r++)
+    for(int r = 0; r < 64; r++)
     {
-        copy_out(V2P(mem_page), swap_table[i].pte_list[r],r);
+        store_pte_in_list_at_index(V2P(mem_page), swap_table[i].pte_list[r],r);
         if(swap_table[i].pte_list[r]!=0)
         {
-            *swap_table[i].pte_list[r]=*page_table_entry;
+            *swap_table[i].pte_list[r] = *page_table_entry;
         }
     }
     // *page_table_entry =V2P(mem_page)  | PTE_P | swap_table[i].page_perm;
@@ -182,14 +188,59 @@ int swap_page_in(pte_t *page_table_entry, struct proc *p)
 }
 
 
-void freepage(pte_t* pte)
-{
-    // int slot_no = *pte >> 12;
-    // // cprintf("inside freepage\n");
+// void freepage(pte_t* pte)
+// {
+//     int slot_no = *pte >> 12;
+//     // cprintf("inside freepage\n");
+//     swap_table[slot_no].ref_count--;
+//     // is free only when the ref_count == 1
+//     if(swap_table[slot_no].ref_count<=0)
+//     {
+//         swap_table[slot_no].is_free=1;
+//         swap_table[slot_no].ref_count = 0;
+//     }
+// }
 
-    // swap_table[slot_no].is_free = 1;
+void insert_pte_in_swap_slot(pte_t* pte, int slot_no)
+{
+    for (int i = 0; i < NPROC; i++)
+    {
+        if(swap_table[slot_no].pte_list[i]==pte)
+        {
+            return;
+        }
+    }
+
+  for (int i = 0; i < NPROC; i++)
+  {
+    if(swap_table[slot_no].pte_list[i]==0)
+    {
+      swap_table[slot_no].pte_list[i]=pte;
+      return;
+    }
+  }
+//   panic("insert_pte_swap_slot: No space in pte_list_2D");
+
 }
 
+
+void remove_pte_from_swap_slot(pte_t* pte, int slot_no)
+{
+    for (int i = 0; i < NPROC; i++)
+    {
+        if(swap_table[slot_no].pte_list[i]==pte)
+        {
+            swap_table[slot_no].pte_list[i]=0;
+        }
+    }
+    // panic("remove_pte_swap_slot: pte not found in pte_list_2D");
+}
+
+
+void store_pte_in_swap_slot(int block_no, pde_t* pte, int i)
+{
+    swap_table[block_no].pte_list[i]=pte;
+}
 
 void page_fault_handler()
 {
@@ -200,8 +251,8 @@ void page_fault_handler()
 
   // Check if the faulting address is in the process's address space
   struct proc *curproc = myproc();
-  cprintf(" pid : %d\n",curproc->pid);
-
+//   cprintf(" pid : %d\n",curproc->pid);
+//
 //   if (faulting_address >= curproc->sz) {
 //     cprintf("Segmentation fault\n");
 //     curproc->killed = 1;
@@ -209,6 +260,8 @@ void page_fault_handler()
 //   }
 
   pde_t *pgdir = curproc->pgdir;
+//   cprintf("faulting process: %d\n", curproc->pid);
+//   cprintf("faulting address: %x\n", faulting_address);
   pte_t *pte = walkpgdir(pgdir, (void *)faulting_address, 0);
   if (!pte) {
       // This should not happen

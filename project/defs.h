@@ -73,6 +73,11 @@ void            inc_ref_count(uint);
 void            dec_ref_count(uint);
 void            set_ref_count(uint, int);
 int             get_ref_count(uint);
+pde_t*          get_pte_at_pa_of_proc_i(uint, int );
+void            store_pte_in_list_at_index(uint,pde_t*, int);
+void            insert_pte(uint, pte_t*);
+void            remove_pte(uint pa, pte_t* pte);
+
 
 // kbd.c
 void            kbdintr(void);
@@ -128,13 +133,12 @@ void            yield(void);
 void            print_rss(void);
 struct proc*    find_victim_process(void);
 pte_t*          find_victim_pte(struct proc *victim_p);
-void            clear_swap(pde_t *pgdir, struct proc *p);
+// void            clear_swap(pde_t *pgdir, struct proc *p);
 
 
 
 // swtch.S
 void            swtch(struct context**, struct context*);
-void            funci(int);
 
 // spinlock.c
 void            acquire(struct spinlock*);
@@ -144,8 +148,6 @@ void            initlock(struct spinlock*, char*);
 void            release(struct spinlock*);
 void            pushcli(void);
 void            popcli(void);
-pde_t*           get_smthth_entry(uint, int );
-void            copy_out(uint,pde_t*, int);
 
 // sleeplock.c
 void            acquiresleep(struct sleeplock*);
@@ -206,8 +208,14 @@ pte_t* walkpgdir(pde_t *pgdir, const void *va, int alloc);
 void            swap_init(void);
 char*           swap_page_out(void);
 int             swap_page_in(pte_t *page_table_entry, struct proc *p);
-void            freepage(pte_t* pte);
+// void            freepage(pte_t* pte);
 void            page_fault_handler(void);
+void            decrement_swap_slot_ref_count(int);
+void            increment_swap_slot_ref_count(int);
+void            insert_pte_in_swap_slot(pte_t* pte, int slot_no);
+void            remove_pte_from_swap_slot(pte_t* pte, int slot_no);
+void            store_pte_in_swap_slot(int block_no, pde_t* pte, int i);
+
 
 
 // number of elements in fixed-size array

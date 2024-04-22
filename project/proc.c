@@ -228,7 +228,7 @@ void
 exit(void)
 {
   struct proc *curproc = myproc();
-  cprintf("i am here\n");
+  // cprintf("i am here\n");
   struct proc *p;
   int fd;
 
@@ -242,7 +242,7 @@ exit(void)
       curproc->ofile[fd] = 0;
     }
   }
-  cprintf("i am here2\n");
+  // cprintf("i am here2\n");
   begin_op();
   iput(curproc->cwd);
   end_op();
@@ -264,8 +264,8 @@ exit(void)
 
   // Jump into the scheduler, never to return.
   curproc->state = ZOMBIE;
-  cprintf("pppid : %d\n",curproc->pid);
-  cprintf("i am here3\n");
+  // cprintf("pppid : %d\n",curproc->pid);
+  // cprintf("i am here3\n");
   sched();
   panic("zombie exit");
 }
@@ -279,7 +279,7 @@ wait(void)
   int havekids, pid;
   struct proc *curproc = myproc();
 
-  cprintf("you are here too\n");
+  // cprintf("you are here too\n");
   
   acquire(&ptable.lock);
   for(;;){
@@ -290,8 +290,9 @@ wait(void)
         continue;
       havekids = 1;
       if(p->state == ZOMBIE){
-        cprintf("pid : %d\n",p->pid);
+        // cprintf("pid : %d\n",p->pid);
         // Found one.
+        // clear_swap(p->pgdir, p);
         pid = p->pid;
         kfree(p->kstack);
         p->kstack = 0;
@@ -302,7 +303,7 @@ wait(void)
         p->killed = 0;
         p->state = UNUSED;
         release(&ptable.lock);
-        cprintf("finish\n");
+        // cprintf("finish\n");
         return pid;
       }
     }
@@ -315,7 +316,7 @@ wait(void)
 
     // Wait for children to exit.  (See wakeup1 call in proc_exit.)
     sleep(curproc, &ptable.lock);  //DOC: wait-sleep
-    cprintf("uth gaya me\n");
+    // cprintf("uth gaya me\n");
   }
 }
 
@@ -634,11 +635,10 @@ pte_t* find_victim_pte(struct proc *victim_p)
             if(cnt==0)
             {
               *pte &= ~PTE_A; // Unset the PTE_A flag
-            pages_to_convert--;
-
+              pages_to_convert--;
             }
+
             cnt=(cnt+1)%10;
-            
         }
     }
 
@@ -663,20 +663,20 @@ pte_t* find_victim_pte(struct proc *victim_p)
 }
 
 
-void clear_swap(pde_t *pgdir, struct proc *p)
-{
-    pte_t *pte;
-    for(uint i = 0; i < p->sz; i += PGSIZE)
-    {
-        if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
-            continue;
-        
-        if((*pte & PTE_P) == 0)
-        {
-          if (*pte & 0x008)
-          {
-            freepage(pte);
-          }
-        }
-    }
-}
+// void clear_swap(pde_t *pgdir, struct proc *p)
+// {
+//     pte_t *pte;
+//     for(uint i = 0; i < p->sz; i += PGSIZE)
+//     {
+//         if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
+//             continue;
+       
+//         if((*pte & PTE_P) == 0)
+//         {
+//           if (*pte & 0x008)
+//           {
+//             freepage(pte);
+//           }
+//         }
+//     }
+// }
