@@ -10,63 +10,55 @@
 #include "fs.h"
 #include "buf.h"
 
-
 void page_fault_handler(void) {
-    // cprintf("page fault\n");
-    // Get the faulting address
-    uint faulting_address; // vartual address
+    uint faulting_address; // The virtual address that caused the fault
+    faulting_address = rcr2(); // Get the faulting address from CR2
 
-    faulting_address = rcr2();
+    struct proc *curproc = myproc(); // Get the current process
 
-    // Check if the faulting address is in the process's address space
-    struct proc *curproc = myproc();
-
-    if (faulting_address < curproc->sz) {
-        // The address is in the process's address space, so this is a write to a COW page
-        // Find the page table entry for the faulting address
-        pde_t *pgdir = curproc->pgdir;
-        pte_t *pte = walkpgdir(pgdir, (char*)faulting_address, 0);
-        if (!pte) {
-            // This should not happen
-            panic("pte should exist");
-        }
-
-        // Check the proc_count for the faulting page
-        if (rmap_table[PGNUM(PTE_ADDR(*pte))].proc_count > 1) {
-            // There are multiple processes referencing the page
-            // Allocate a new page
-            char *mem = kalloc();
-            if (mem == 0) {
-                // Out of memory, kill the process
-                cprintf("page_fault_handler: out of memory\n");
-                curproc->killed = 1;
-                return;
-            }
-            // memset(mem, 0, PGSIZE);
-
-            // Copy the contents of the original page to the new page
-            memmove(mem, (char*)P2V(PTE_ADDR(*pte)), PGSIZE);
-
-            // Update the page table entry to point to the new page
-            *pte = V2P(mem) | PTE_W | PTE_FLAGS(*pte) | PTE_P;
-            
-            // Decrement the proc_count for the original page
-            rmap_table[PGNUM(PTE_ADDR(*pte))].proc_count--;
-
-            // Increment the proc_count for the new page
-            rmap_table[PGNUM(V2P(mem))].proc_count = 1;
-        } else {
-            // The faulting process is the only one referencing the page
-            // Mark the page as writable
-            *pte |= PTE_W;
-        }
-        // Return to let the process continue execution
-        lcr3(V2P(pgdir));
-        return;
+    // Check if the faulting address is within the process's address space
+    if (faulting_address >= curproc->sz) {
+        cprintf("segmentation fault\n");
+        curproc->killed = 1;
+        return; // Exit the handler if address is out of bounds
     }
 
-    // The faulting address is not in the process's address space, kill the process
-    // lcr3(V2P(curproc->pgdir));
-    cprintf("segmentation fault\n");
-    // curproc->killed = 1;
+    pde_t *pgdir = curproc->pgdir;
+    pte_t *pte = walkpgdir(pgdir, (char*)faulting_address, 0);
+    if (!pte) {
+        panic("pte should exist"); // Panic if there is no page table entry
+    }
+
+    // Handling Copy-On-Write page faults
+    if (*pte & PTE_COW) {
+        uint pa = PTE_ADDR(*pte);
+        int ref_count = rmap_table[PGNUM(pa)].proc_count;
+
+        if (ref_count > 1) {
+            // More than one reference to the page: need to create a new page
+            char *mem = kalloc();
+            if (mem == 0) {
+                cprintf("page_fault_handler: out of memory\n");
+                curproc->killed = 1;
+                return; // Kill the process if no memory is available
+            }
+            // Copy the contents of the old page to the new page
+            memmove(mem, (char*)P2V(pa), PGSIZE);
+            // Update the PTE to the new page with writable permissions
+            *pte = V2P(mem) | (PTE_FLAGS(*pte) & ~PTE_COW) | PTE_W | PTE_P;
+            // Decrement the original page's reference count
+            rmap_table[PGNUM(pa)].proc_count--;
+            // Increment the reference count for the new page
+            rmap_table[PGNUM(V2P(mem))].proc_count = 1;
+        } else {
+            // Only one reference: simply make the page writable
+            *pte |= PTE_W;
+            *pte &= ~PTE_COW; // Clear the COW flag
+        }
+        lcr3(V2P(pgdir)); // Flush the TLB to ensure the new mapping is used
+    } else {
+        // Not a COW fault, should not happen as we handle only COW pages here
+        cprintf("page fault not handled\n");
+        curproc->killed = 1;
+    }
 }
