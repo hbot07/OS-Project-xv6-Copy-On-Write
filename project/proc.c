@@ -20,8 +20,6 @@ extern void trapret(void);
 
 static void wakeup1(void *chan);
 
-// is MAX_PAGES the same as PHYSTOP/PGSIZE?
-
 void
 pinit(void)
 {
@@ -198,7 +196,6 @@ fork(void)
     np->state = UNUSED;
     return -1;
   }
-
   np->sz = curproc->sz;
   np->parent = curproc;
   *np->tf = *curproc->tf;
@@ -231,6 +228,7 @@ void
 exit(void)
 {
   struct proc *curproc = myproc();
+  cprintf("i am here\n");
   struct proc *p;
   int fd;
 
@@ -244,7 +242,7 @@ exit(void)
       curproc->ofile[fd] = 0;
     }
   }
-
+  cprintf("i am here2\n");
   begin_op();
   iput(curproc->cwd);
   end_op();
@@ -264,9 +262,10 @@ exit(void)
     }
   }
 
-  
   // Jump into the scheduler, never to return.
   curproc->state = ZOMBIE;
+  cprintf("pppid : %d\n",curproc->pid);
+  cprintf("i am here3\n");
   sched();
   panic("zombie exit");
 }
@@ -279,6 +278,8 @@ wait(void)
   struct proc *p;
   int havekids, pid;
   struct proc *curproc = myproc();
+
+  cprintf("you are here too\n");
   
   acquire(&ptable.lock);
   for(;;){
@@ -289,6 +290,7 @@ wait(void)
         continue;
       havekids = 1;
       if(p->state == ZOMBIE){
+        cprintf("pid : %d\n",p->pid);
         // Found one.
         pid = p->pid;
         kfree(p->kstack);
@@ -300,6 +302,7 @@ wait(void)
         p->killed = 0;
         p->state = UNUSED;
         release(&ptable.lock);
+        cprintf("finish\n");
         return pid;
       }
     }
@@ -312,6 +315,7 @@ wait(void)
 
     // Wait for children to exit.  (See wakeup1 call in proc_exit.)
     sleep(curproc, &ptable.lock);  //DOC: wait-sleep
+    cprintf("uth gaya me\n");
   }
 }
 
@@ -396,6 +400,7 @@ sched(void)
   if(readeflags()&FL_IF)
     panic("sched interruptible");
   intena = mycpu()->intena;
+  //cprintf("sched\n");
   swtch(&p->context, mycpu()->scheduler);
   mycpu()->intena = intena;
 }
@@ -426,6 +431,7 @@ forkret(void)
     first = 0;
     iinit(ROOTDEV);
     initlog(ROOTDEV);
+    swap_init();
   }
 
   // Return to "caller", actually trapret (see allocproc).
@@ -550,4 +556,127 @@ procdump(void)
     }
     cprintf("\n");
   }
+}
+
+
+struct proc* find_victim_process()
+{
+    struct proc *p, *victim = 0;
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+    {
+        if(victim == 0)
+        {
+          victim = p;
+          continue;
+        }
+        if(p->pid==1||p->pid==2)
+        {
+          continue;
+        }
+
+        if((p->sz > victim->sz) || (p->sz == victim->sz && p->pid > victim->pid))
+            victim = p;
+    }
+
+    if (victim == 0)
+        panic("find_victim_process: No runnable process found");
+
+    return victim;
+}
+
+
+// returns the complete page table entry of the victim page
+// returns 0 if no victim page is found 
+pte_t* find_victim_pte(struct proc *victim_p)
+{
+    // if (victim_p->rss == 0)
+    // {
+    //   panic("find_victim_pte: victim_p->rss == 0");
+    // }
+
+    pte_t *pte;
+    // pte_t victim_pte;
+    int accessed_pages = 0;
+    int pages_to_convert = 0;
+
+    for(uint i = 0; i < victim_p->sz; i += PGSIZE)
+    {
+        if((pte = walkpgdir(victim_p->pgdir, (void *) i, 0)) == 0)
+            continue;
+        
+        if((*pte & PTE_P) == 0)
+            continue;
+
+        if((*pte & PTE_A) == 0) {
+            // cprintf("Found victim pte: va = %x, *pte = %x\n", i, *pte);
+            return pte;
+        }
+        else 
+            accessed_pages++;
+    }
+
+    // No victim page found in the process, 
+    // so we convert 10% of accessed pages to non-accessed by unsetting the PTE_A flag
+    pages_to_convert = accessed_pages / 10;
+
+    int cnt=3;
+    if(pages_to_convert == 0)
+        pages_to_convert = 1;
+
+    // cprintf("No victim page found, converting %d pages to non-accessed\n", pages_to_convert);    
+    for(uint i = 0; i < victim_p->sz && pages_to_convert > 0; i += PGSIZE)
+    {
+        if((pte = walkpgdir(victim_p->pgdir, (void *) i, 0)) == 0)
+            continue;
+
+        if((*pte & PTE_P) != 0 && (*pte & PTE_A) != 0)
+        {
+            if(cnt==0)
+            {
+              *pte &= ~PTE_A; // Unset the PTE_A flag
+            pages_to_convert--;
+
+            }
+            cnt=(cnt+1)%10;
+            
+        }
+    }
+
+    // Try to find a victim page again
+    for(uint i = 0; i < victim_p->sz; i += PGSIZE)
+    {
+        if((pte = walkpgdir(victim_p->pgdir, (void *) i, 0)) == 0)
+            continue;
+
+        if((pte = walkpgdir(victim_p->pgdir, (void *) i, 0)) == 0)
+            continue;
+        
+        if((*pte & PTE_P) == 0)
+            continue;
+
+        if((*pte & PTE_A) == 0) {
+            return pte;
+        }
+    }
+
+    return 0; // No victim page found
+}
+
+
+void clear_swap(pde_t *pgdir, struct proc *p)
+{
+    pte_t *pte;
+    for(uint i = 0; i < p->sz; i += PGSIZE)
+    {
+        if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
+            continue;
+        
+        if((*pte & PTE_P) == 0)
+        {
+          if (*pte & 0x008)
+          {
+            freepage(pte);
+          }
+        }
+    }
 }

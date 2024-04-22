@@ -10,9 +10,6 @@
 extern char data[];  // defined by kernel.ld
 pde_t *kpgdir;  // for use in scheduler()
 
-// struct rmap rmap;
-struct rmap rmap_table[PHYSTOP2/PGSIZE];
-
 // Set up CPU's kernel segment descriptors.
 // Run once on entry on each CPU.
 void
@@ -193,8 +190,6 @@ inituvm(pde_t *pgdir, char *init, uint sz)
   memset(mem, 0, PGSIZE);
   mappages(pgdir, 0, PGSIZE, V2P(mem), PTE_W|PTE_U);
   memmove(mem, init, sz);
-  // update rmap_table
-  rmap_table[PGNUM(V2P(mem))].proc_count = 1;
 }
 
 // Load a program segment into pgdir.  addr must be page-aligned
@@ -240,6 +235,8 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
     if(mem == 0){
       cprintf("allocuvm out of memory\n");
       deallocuvm(pgdir, newsz, oldsz);
+
+
       return 0;
     }
     memset(mem, 0, PGSIZE);
@@ -249,8 +246,6 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       kfree(mem);
       return 0;
     }
-    // update rmap_table
-    rmap_table[PGNUM(V2P(mem))].proc_count++;
   }
   return newsz;
 }
@@ -278,17 +273,13 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       if(pa == 0)
         panic("kfree");
       char *v = P2V(pa);
-      // kfree(v);
+      kfree(v);
       *pte = 0;
-
-      // update rmap_table
-      if (rmap_table[PGNUM(pa)].proc_count > 1) {
-
-        rmap_table[PGNUM(pa)].proc_count--;
-      } else {
-        rmap_table[PGNUM(pa)].proc_count = 0;
-        kfree(v);
-      }
+    }
+    else
+    {
+      int block_no = *pte >> 12;
+      funci(block_no);
     }
   }
   return newsz;
@@ -328,47 +319,13 @@ clearpteu(pde_t *pgdir, char *uva)
 
 // Given a parent process's page table, create a copy
 // of it for a child.
-// pde_t*
-// copyuvm_old(pde_t *pgdir, uint sz)
-// {
-//   pde_t *d;
-//   pte_t *pte;
-//   uint pa, i, flags;
-//   char *mem;
-//
-//   if((d = setupkvm()) == 0)
-//     return 0;
-//   for(i = 0; i < sz; i += PGSIZE){
-//     if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
-//       panic("copyuvm: pte should exist");
-//     if(!(*pte & PTE_P))
-//       panic("copyuvm: page not present");
-//     pa = PTE_ADDR(*pte);
-//     flags = PTE_FLAGS(*pte);
-//     if((mem = kalloc()) == 0)
-//       goto bad;
-//     memmove(mem, (char*)P2V(pa), PGSIZE);
-//     if(mappages(d, (void*)i, PGSIZE, V2P(mem), flags) < 0) {
-//       kfree(mem);
-//       goto bad;
-//     }
-//   }
-//   return d;
-//
-// bad:
-//   freevm(d);
-//   return 0;
-// }
-
-
-// Modified copyuvm function 
 pde_t*
-copyuvm(pde_t *pgdir, uint sz)
+copyuvm_old(pde_t *pgdir, uint sz)
 {
   pde_t *d;
   pte_t *pte;
   uint pa, i, flags;
-  // char *mem;
+  char *mem;
 
   if((d = setupkvm()) == 0)
     return 0;
@@ -377,29 +334,67 @@ copyuvm(pde_t *pgdir, uint sz)
       panic("copyuvm: pte should exist");
     if(!(*pte & PTE_P))
       panic("copyuvm: page not present");
-    *pte &= ~PTE_W;
-    *pte |= PTE_COW;
     pa = PTE_ADDR(*pte);
     flags = PTE_FLAGS(*pte);
+    if((mem = kalloc()) == 0)
+      goto bad;
+    memmove(mem, (char*)P2V(pa), PGSIZE);
+    //inc_ref_count(pa);
 
-    // copy each page table entry into d
-    if(mappages(d, (void*)i, PGSIZE, pa, flags) < 0) {
-      // kfree(mem);
+    if(mappages(d, (void*)i, PGSIZE, V2P(mem), flags) < 0) {
+      kfree(mem);
       goto bad;
     }
-
-    // update rmap_table
-    rmap_table[PGNUM(pa)].proc_count++;
   }
-  lcr3(V2P(pgdir));
+  lcr3(V2P(pgdir));  // flush TLB
   return d;
 
 bad:
-  lcr3(V2P(pgdir));
+  lcr3(V2P(pgdir));  // flush TLB
   freevm(d);
   return 0;
 }
 
+pde_t*
+copyuvm(pde_t *pgdir, uint sz)
+{
+  pde_t *d;
+  pte_t *pte;
+  uint pa, i, flags;
+  char *mem;
+
+  if((d = setupkvm()) == 0)
+    return 0;
+  for(i = 0; i < sz; i += PGSIZE){
+    if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
+      panic("copyuvm: pte should exist");
+    if(!(*pte & PTE_P))
+      panic("copyuvm: page not present");
+    pa = PTE_ADDR(*pte);
+    flags = PTE_FLAGS(*pte);
+    flags &= ~PTE_W;
+    *pte &= ~PTE_W;
+    // if((mem = kalloc()) == 0)
+    //   goto bad;
+    // memmove(mem, (char*)P2V(pa), PGSIZE);
+    inc_ref_count(pa);
+
+    if(mappages(d, (void*)i, PGSIZE, pa, flags) < 0) {
+      kfree(mem);
+    pde_t* wtf=walkpgdir(d, (void*)i, 0);
+    insert_pte(pa, wtf);
+    insert_pte(pa, pte);
+      goto bad;
+    }
+  }
+  lcr3(V2P(pgdir));  // flush TLB
+  return d;
+
+bad:
+  lcr3(V2P(pgdir));  // flush TLB
+  freevm(d);
+  return 0;
+}
 
 //PAGEBREAK!
 // Map user virtual address to kernel address.
@@ -448,4 +443,3 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
 // Blank page.
 //PAGEBREAK!
 // Blank page.
-

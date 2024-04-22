@@ -69,6 +69,10 @@ uint            num_of_FreePages(void);
 void            kfree(char*);
 void            kinit1(void*, void*);
 void            kinit2(void*, void*);
+void            inc_ref_count(uint);
+void            dec_ref_count(uint);
+void            set_ref_count(uint, int);
+int             get_ref_count(uint);
 
 // kbd.c
 void            kbdintr(void);
@@ -122,9 +126,15 @@ int             wait(void);
 void            wakeup(void*);
 void            yield(void);
 void            print_rss(void);
+struct proc*    find_victim_process(void);
+pte_t*          find_victim_pte(struct proc *victim_p);
+void            clear_swap(pde_t *pgdir, struct proc *p);
+
+
 
 // swtch.S
 void            swtch(struct context**, struct context*);
+void            funci(int);
 
 // spinlock.c
 void            acquire(struct spinlock*);
@@ -134,6 +144,8 @@ void            initlock(struct spinlock*, char*);
 void            release(struct spinlock*);
 void            pushcli(void);
 void            popcli(void);
+pde_t*           get_smthth_entry(uint, int );
+void            copy_out(uint,pde_t*, int);
 
 // sleeplock.c
 void            acquiresleep(struct sleeplock*);
@@ -187,10 +199,16 @@ void            switchuvm(struct proc*);
 void            switchkvm(void);
 int             copyout(pde_t*, uint, void*, uint);
 void            clearpteu(pde_t *pgdir, char *uva);
-pte_t*          walkpgdir(pde_t *pgdir, const void *va, int alloc);
+pte_t* walkpgdir(pde_t *pgdir, const void *va, int alloc);
 
-// cow.c
+
+// pageswap.c
+void            swap_init(void);
+char*           swap_page_out(void);
+int             swap_page_in(pte_t *page_table_entry, struct proc *p);
+void            freepage(pte_t* pte);
 void            page_fault_handler(void);
+
 
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))
