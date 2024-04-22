@@ -31,11 +31,11 @@ struct swap_slot {
 };
 
 
-struct swap_slot swap_table[(NSWAP/8)];
+struct swap_slot swap_table[(SWAPBLOCKS/8)];
 
 void swap_init() {
 
-    for (int i = 0; i < (NSWAP/8); i++) {
+    for (int i = 0; i < (SWAPBLOCKS/8); i++) {
         swap_table[i].is_free = 1;
         swap_table[i].page_perm = 0;
         swap_table[i].starting_block_number = 2 + i*8; // make this 'better'?
@@ -68,7 +68,7 @@ char* swap_page_out() {
     // cprintf("page found\n");
     if (victim_pte == 0)
     {
-        panic("victim_pte is null");     
+        // panic("victim_pte is null");     
     }
 
     // cprintf("victim_proc pid: %x and rss: %d\n", victim_proc->pid, victim_proc->rss);
@@ -78,7 +78,7 @@ char* swap_page_out() {
     int i;
 
     // Find a free swap slot
-    for (i = 0; i < (NSWAP/8); i++) {
+    for (i = 0; i < (SWAPBLOCKS/8); i++) {
         if (swap_table[i].is_free) {
             swap_table[i].is_free = 0;
             swap_table[i].page_perm = PTE_FLAGS(*victim_pte);
@@ -87,7 +87,7 @@ char* swap_page_out() {
     }
 
     // If no free swap slot is found, return -1
-    if (i == (NSWAP/8)) {
+    if (i == (SWAPBLOCKS/8)) {
         panic("swap_page_out: no free swap slot found\n");
         return 0;
     }
@@ -116,7 +116,7 @@ char* swap_page_out() {
     // *victim_pte &= ~PTE_P;
     *victim_pte |= 0x008;
 
-    for(int proc_no = 0; proc_no < 64; proc_no ++)
+    for(int proc_no = 0; proc_no < NPROC; proc_no ++)
     {
         pte_t* entry = get_pte_at_pa_of_proc_i(V2P(mem_page), proc_no);
         swap_table[i].pte_list[proc_no] = entry;
@@ -166,7 +166,7 @@ int swap_page_in(pte_t *page_table_entry, struct proc *p)
     
     *page_table_entry = V2P(mem_page) | PTE_P | swap_table[i].page_perm;
     *page_table_entry &= ~0x008;
-    for(int r = 0; r < 64; r++)
+    for(int r = 0; r < NPROC; r++)
     {
         store_pte_in_list_at_index(V2P(mem_page), swap_table[i].pte_list[r],r);
         if(swap_table[i].pte_list[r]!=0)
@@ -265,7 +265,7 @@ void page_fault_handler()
   pte_t *pte = walkpgdir(pgdir, (void *)faulting_address, 0);
   if (!pte) {
       // This should not happen
-      panic("pte should eeexist");
+    //   panic("pte should eeexist");
   }
 
   if (!(*pte & PTE_P)) {
