@@ -270,6 +270,7 @@ void page_fault_handler()
 
   if (!(*pte & PTE_P)) {
     swap_page_in(pte, curproc);
+    // lcr3(V2P(myproc()->pgdir)); // should we flush here???
     return;
   }
 
