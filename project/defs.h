@@ -9,6 +9,7 @@ struct spinlock;
 struct sleeplock;
 struct stat;
 struct superblock;
+struct swap_slot;
 
 // bio.c
 void            binit(void);
@@ -134,6 +135,7 @@ void            print_rss(void);
 struct proc*    find_victim_process(void);
 pte_t*          find_victim_pte(struct proc *victim_p);
 // void            clear_swap(pde_t *pgdir, struct proc *p);
+// void            freepage(pte_t*);
 
 
 

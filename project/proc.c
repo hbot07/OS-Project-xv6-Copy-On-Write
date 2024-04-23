@@ -632,13 +632,16 @@ pte_t* find_victim_pte(struct proc *victim_p)
 
         if((*pte & PTE_P) != 0 && (*pte & PTE_A) != 0)
         {
-            if(cnt==0)
-            {
-              *pte &= ~PTE_A; // Unset the PTE_A flag
-              pages_to_convert--;
-            }
+          // *pte &= ~PTE_A; // Unset the PTE_A flag
+          // pages_to_convert--;
 
-            cnt=(cnt+1)%10;
+          if(cnt==0)
+          {
+            *pte &= ~PTE_A; // Unset the PTE_A flag
+            pages_to_convert--;
+          }
+
+          cnt=(cnt+1)%10;
         }
     }
 
